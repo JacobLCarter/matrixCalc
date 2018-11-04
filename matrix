@@ -1,0 +1,361 @@
+#!/bin/bash
+################################################################################
+# Program Name: matrix
+# Author: Jacob Carter
+# Date Modified: 10/9/2018
+# Course: CS344
+################################################################################
+
+TEMP=temp$$
+TEMP2=temp2$$
+TEMPSUM=tempsum$$
+TEMPBUFFER=tempbuffer$$
+TEMPBUFFER1=tempbuffer1$$
+TEMPPRODUCT=tempproduct$$
+trap "rm -f $TEMP $TEMP2 $TEMPSUM $TEMPBUFFER $TEMPBUFFER1 $TEMPPRODUCT; echo 'Deleting temp file and exiting'; exit 1" INT
+
+################################################################################
+# Function Name: dims
+# Description: finds the dimensions of a single matrix 
+# Arguments: a matrix
+################################################################################
+dims () {
+  # set a temp file that can handle files or stdin
+  datafilepath="datafile$$"
+  if [ $# -eq 0 ]
+  then
+    cat > "$datafilepath" 
+  elif [ $# -eq 1 ]
+  then
+    datafilepath=$1
+  else
+    printf "$0 Invalid number of arguments\n" >&2
+    exit 1
+  fi
+ 
+  # check if the file can be read
+  if [[ ! -r $datafilepath && ! -z $datafilepath ]]; then
+    printf "$0 $datafilepath is unreadable" >&2
+    exit 1
+  fi
+ 
+  #check that the requisite permissions for reading the file exist
+  if [[ ! -r $datafilepath ]]; then
+    printf "$0 Read permission for $datafilepath denied" >&2
+    exit 1
+  fi
+  
+  rows=0
+  # read each line in from the specified file
+  while read matrixLine
+  do
+    # increase the row count for each line
+    rows=`expr $rows + 1`
+  done < $datafilepath 
+  # print the dimensions
+  echo "$rows $(head -1 $datafilepath | wc -w)"
+
+  #clean temporary files
+  cleanTemps;
+}
+
+################################################################################
+# Function Name: transpose 
+# Description: flips a matrix along its horizontal axis (rows become columns & 
+# vice versa)
+# Arguments: a matrix
+################################################################################
+transpose () {
+  datafilepath="datafile$$"
+  if [ $# -eq 0 ]
+  then
+    cat > "$datafilepath" 
+  elif [ $# -eq 1 ]
+  then
+    datafilepath=$1
+  else
+    printf "$0 Invalid number of arguments\n" >&2
+    exit 1
+  fi
+  
+  if [[ ! -r $datafilepath && ! -z $datafilepath ]]; then
+    printf "$0 $datafilepath is unreadable" >&2
+    exit 1
+  fi
+  
+  if [[ ! -r $datafilepath ]]; then
+    printf "$0 Read permission for $datafilepath denied" >&2
+    exit 1
+  fi
+
+  # find the number of columns in the matrix
+  cols=$(head -1 $datafilepath | wc -w)
+  # loop through the file over each column 
+  for (( i=1; i <= $cols; i++))
+  do
+    # cut each column, transpose it, and append it to the temp file
+    cut -f $i $datafilepath | tr '\n' '\t' | head -c -1 >> $TEMP
+    # add a line break between each newly appended row
+    echo -e >> $TEMP
+  done 
+  # clean up the tempfile
+  cat $TEMP 
+  cleanTemps;
+}
+
+################################################################################
+# Function Name: mean
+# Description: calculates the average value of a single line of a matrix 
+# Arguments: a matrix
+################################################################################
+mean () {
+  datafilepath="datafile$$"
+  if [ $# -eq 0 ]
+  then
+    cat > "$datafilepath" 
+  elif [ $# -eq 1 ]
+  then
+    datafilepath=$1
+  else
+    printf "$0 Invalid number of arguments\n" >&2
+    exit 1
+  fi
+  
+  if [[ ! -r $datafilepath && ! -z $datafilepath ]]; then
+    printf "$0 $datafilepath is unreadable" >&2
+    exit 1
+  fi
+  
+  if [[ ! -r $datafilepath ]]; then
+    printf "$0 Read permission for $datafilepath denied" >&2
+    exit 1
+  fi
+
+  cols=$(head -1 $datafilepath | wc -w)
+  # loop through the file over each column 
+  for (( i=1; i <= $cols; i++ ))
+  do
+    # cut each column, transpose it, and append it to the temp file
+    cut -f $i $datafilepath | tr '\n' '\t' >> $TEMP
+    # add a line break between each newly appended row
+    echo -e >> $TEMP
+  done
+  # used to check if a newline is needed instead of a tab
+  colCount=0
+  while read matrixLine
+    do
+      #reset variables
+      sum=0
+      count=0
+      mean=0
+      #increment the number of the current column
+      colCount=`expr $colCount + 1`
+      # loop through each row
+      for i in $matrixLine
+        do
+          # increase the column count
+          count=`expr $count + 1` 
+          # add to the total sum of the column
+          sum=`expr $sum + $i`
+        done
+        # calculate the mean
+        mean=$(( ($sum + ($count/2)*( ($sum>0)*2-1)) / $count ))
+        # print the mean of the columns
+        if [ ! $colCount -eq $cols ]; then
+          echo -n -e "$mean\t" >> $TEMPPRODUCT
+        else
+          echo -e "$mean" >> $TEMPPRODUCT
+        fi
+    done < $TEMP
+  #output the mean
+  cat $TEMPPRODUCT 
+  # clean up the tempfile
+  cleanTemps;
+}
+################################################################################
+# Function Name: add
+# Description: calculates the sum of adding two matrixes together 
+# Arguments: a matrix
+################################################################################
+add () {
+  if [ ! $# -eq 2 ]; then   
+    printf "$0 Invalid number of arguments\n" >&2
+    exit 1
+  fi
+ 
+  if [[ ! -r $1 && ! -z $1 ]]; then
+    printf "$0 $1 is unreadable" >&2
+    exit 1
+  elif [[ ! -r $2 && ! -z $2 ]]; then
+    printf "$0 $2 is unreadable" >&2
+    exit 1
+  fi
+  
+  if [[ ! -r $1 ]]; then
+    printf "$0 Read permission for $1 denied" >&2
+    exit 1
+  elif [[ ! -r $2 ]]; then
+    printf "$0 Read permission for $2 denied" >&2
+    exit 1
+  fi 
+
+  # get dimensions for both matrices
+  cols1=$(head -1 $1 | wc -w) 
+  cols2=$(head -1 $2 | wc -w) 
+  rows1=$(cat $1 | wc -l)
+  rows2=$(cat $2 | wc -l)
+
+  # check that the matrix have equal dimensions
+  if [ ! $cols1 -eq $cols2 ]; then 
+    printf "$0 Invalid number of columns\n" >&2
+    exit 1
+  fi
+  
+  if [ ! $rows1 -eq $rows2 ]; then   
+    printf "$0 Invalid number of rows\n" >&2
+    exit 1
+  fi
+  
+  count=0
+  # transpose the matrices and read them into temp files for addition
+  cat $1 | tr '\t' '\n' >> $TEMP 
+  cat $2 | tr '\t' '\n' >> $TEMP2
+  # loop while not EOF for either matrix
+  while read line1 <&3 && read line2 <&4 
+    do
+      for i in $line1
+        do
+          for j in $line2
+            do
+              # increase the count for printing
+              count=`expr $count + 1`
+              sum=`expr $i + $j`
+              # append summed values to file
+              if [ ! $count -eq $cols1 ]; then
+                echo -n -e "$sum\t" >> $TEMPSUM
+              else
+                echo -e "$sum" >> $TEMPSUM
+                count=0
+              fi
+            done 
+        done 
+    done 3<$TEMP 4<$TEMP2
+  # print the summation of the matrices
+  cat $TEMPSUM
+  # clean up the tempfile
+  cleanTemps;
+}
+################################################################################
+# Function Name: multiply
+# Description: finds the product of multiplying two matrices together 
+# Arguments: two matrices
+################################################################################
+multiply () {
+  if [ ! $# -eq 2 ]; then   
+    printf "$0 Invalid number of arguments\n" >&2
+    exit 1
+  fi
+ 
+  if [[ ! -r $1 && ! -z $1 ]]; then
+    printf "$0 $1 is unreadable" >&2
+    exit 1
+  elif [[ ! -r $2 && ! -z $2 ]]; then
+    printf "$0 $2 is unreadable" >&2
+    exit 1
+  fi
+  
+  if [[ ! -r $1 ]]; then
+    printf "$0 Read permission for $1 denied" >&2
+    exit 1
+  elif [[ ! -r $2 ]]; then
+    printf "$0 Read permission for $2 denied" >&2
+    exit 1
+  fi 
+
+  cols=$(head -1 $1 | wc -w) 
+  rows2=$(cat $2 | wc -l)
+  if [ ! $cols -eq $rows2 ]; then 
+    printf "$0 Invalid matrix dimensions\n" >&2
+    exit 1
+  fi
+
+  # reset cols variable to the number of columns in the second matrix
+  cols=$(head -1 $2 | wc -w)
+  while read line1
+    do
+      # clear the file used to hold columns for matrix 1
+      > $TEMPBUFFER 
+      # transpose a row of the first matrix
+      for i in $line1
+        do
+          echo $i >> $TEMPBUFFER
+        done
+        # loop for each column in the second matrix
+        for (( j=1; j <= $cols; j++ ))
+          do
+            # clear the file used to hold columns for matrix 2
+            > $TEMPBUFFER1
+            # cut a column out of the second matrix and append it to file
+            cut -f $j $2 >> $TEMPBUFFER1
+            sumProduct=0
+            while read col1 <&5 && read col2 <&6
+              do
+                for m in $col1
+                  do
+                    for n in $col2
+                      do
+                        # multiply the columns together
+                        prod=$(( $m * $n ))
+                        # increase the sum product of the multiplicands
+                        sumProduct=`expr $sumProduct + $prod` 
+                      done
+                  done
+              done 5<$TEMPBUFFER 6<$TEMPBUFFER1
+              # append the sum product to file
+              if [ ! $j -eq $cols ]; then
+                echo -n -e "$sumProduct\t" >> $TEMP
+              else
+                echo -e "$sumProduct" >> $TEMP
+                count=0
+              fi
+          done
+    done < $1
+  # print the multiplied matrix
+  cat $TEMP
+  # clean temp files
+  cleanTemps;
+}
+
+################################################################################
+# Function Name: cleanTemps
+# Description: deletes temp files; utility to be used within other functions 
+# Arguments: none 
+################################################################################
+cleanTemps ()
+{
+  if [[ -e $TEMP ]]; then
+    rm -f $TEMP
+  fi
+
+  if [[ -e $TEMP2 ]]; then
+    rm -f $TEMP2
+  fi
+
+  if [[ -e $TEMPSUM ]]; then
+    rm -f $TEMPSUM
+  fi
+
+  if [[ -e $TEMPBUFFER ]]; then
+    rm -f $TEMPBUFFER
+  fi
+
+  if [[ -e $TEMPBUFFER1 ]]; then
+    rm -f $TEMPBUFFER1
+  fi
+
+  if [[ -e $TEMPPRODUCT ]]; then
+    rm -f $TEMPPRODUCT
+  fi
+}
+
+"$@"

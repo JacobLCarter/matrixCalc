@@ -1,0 +1,198 @@
+#!/bin/bash
+TEMP=temp$$
+TEMP2=temp2$$
+TEMPSUM=tempsum$$
+TEMPBUFFER=tempbuffer$$
+TEMPPRODUCT=tempproduct$$
+trap "rm -f $TEMP $TEMP2 $TEMPSUM $TEMPBUFFER $TEMPPRODUCT; echo 'Deleting temp file and exiting'; exit 1" INT
+################################################################################
+# Function Name: dims
+# Description: finds the dimensions of a single matrix 
+# Arguments: a matrix
+################################################################################
+dims () {
+  # create temporary variable to hold the row count
+  rows=0
+  # read each line in from the specified file
+  while read matrixLine
+  do
+    # increase the row count for each line
+    rows=`expr $rows + 1`
+  done < $1 
+  # print the output
+  # calculate column count in place
+  echo "$rows $(head -1 $1 | wc -w)"
+}
+
+################################################################################
+# Function Name: transpose 
+# Description: flips a matrix along its horizontal axis (rows become columns & 
+# vice versa)
+# Arguments: a matrix
+################################################################################
+transpose () {
+  # find the number of columns in the matrix
+  cols=$(head -1 $1 | wc -w)
+  # loop through the file over each column 
+  for (( i=1; i <= $cols; i++))
+  do
+    # cut each column, transpose it, and append it to the temp file
+    cut -f $i $1 | tr '\n' '\t' >> $TEMP
+    # add a line break between each newly appended row
+    echo -e >> $TEMP
+  done
+  # print the newly transposed matrix
+  cat $TEMP
+  # clean up the tempfile
+  cleanTemps;
+}
+
+################################################################################
+# Function Name: mean
+# Description: calculates the average value of a single line of a matrix 
+# Arguments: a matrix
+################################################################################
+mean () {
+  cols=$(head -1 $1 | wc -w)
+  # loop through the file over each column 
+  for (( i=1; i <= $cols; i++ ))
+  do
+    # cut each column, transpose it, and append it to the temp file
+    cut -f $i $1 | tr '\n' '\t' >> $TEMP
+    # add a line break between each newly appended row
+    echo -e >> $TEMP
+  done
+  while read matrixLine
+    do
+      sum=0
+      count=0
+      mean=0
+      #linenum=`expr $linenum + 1`
+      # loop through each row
+      for i in $matrixLine
+        do
+          # increase the column count
+          count=`expr $count + 1` 
+          # add to the total sum of the column
+          sum=`expr $sum + $i`
+        done
+        # calculate the mean
+        mean=`expr $sum / $count`
+        # print the mean of the columns
+        printf "%f\t" "$mean"    
+    done < $TEMP
+  # clean up the tempfile
+  cleanTemps;
+}
+################################################################################
+# Function Name: add
+# Description: calculates the sum of adding two matrixes together 
+# Arguments: a matrix
+################################################################################
+add () {
+    #validateMatrix $1 $2;
+    cols=$(head -1 $1 | wc -w)
+    rows=$(cat $1 | wc -l)
+    #while read matrixLine1 <&3 && read matrixLine2 <&4
+    #  do
+    #    for i in $matrixLine1
+    #      do
+            cat $1 | tr '\t' '\n' >> $TEMP 
+    #          for j in $matrixLine2
+    #            do
+                  cat $2 | tr '\t' '\n' >> $TEMP2
+    #            done
+    #        done
+    #  done 3<$1 4<$2
+    while read line1 <&3 && read line2 <&4 
+      do
+        for i in $line1
+          do
+            for j in $line2
+              do
+                sum=`expr $i + $j`
+                printf "%i\t" "$sum" >> $TEMPSUM
+                xargs -n$cols < $TEMPSUM
+              done 
+          done 
+      done 3<$TEMP 4<$TEMP2
+  cat $TEMPSUM
+  # clean up the tempfile
+  cleanTemps;
+}
+################################################################################
+# Function Name: multiply
+# Description: finds the product of multiplying two matrices together 
+# Arguments: two matrices
+################################################################################
+multiply () {
+  declare -a product
+  cols=$(head -1 $1 | wc -w)
+  rows=$(cat $1 | wc -l)
+  # loop through the file over each column 
+  for (( i=1; i <= $cols; i++ ))
+  do
+    # cut each column, transpose it, and append it to the temp file
+    cut -f $i $1 | tr '\n' '\t' >> $TEMPBUFFER
+    # add a line break between each newly appended row
+    echo -e >> $TEMPBUFFER
+  done
+  while read line1 <&3 && read line2 <&4
+    do
+      for i in $line1
+        do
+          for j in $line2
+            do
+              prod1=$(( $i * $j ))
+              echo -n $prod1 >> $TEMP
+            done
+        done
+    done 3<$TEMPBUFFER 4<$2
+    fold -w$(( $cols * 2))  $TEMP
+  for (( i=1; i <= $cols; i++ ))
+  do
+    # cut each column, transpose it, and append it to the temp file
+    cut -f $i $TEMP | tr '\n' '\t' >> $TEMPBUFFER1
+    # add a line break between each newly appended row
+    echo -e >> $TEMPBUFFER1
+  done
+  while read line3
+    do
+      for i in $line3
+        do
+          sumProduct=`expr $i + sed 'NUMq;d'
+          echo $i >> $TEMPPRODUCT 
+        done  
+    done < $TEMPBUFFER1
+  cat $TEMPPRODUCT
+}
+
+################################################################################
+# Function Name: cleanTemps
+# Description: deletes temp files; utility to be used within other functions 
+# Arguments: none 
+################################################################################
+cleanTemps ()
+{
+  rm -f $TEMP*
+}
+
+################################################################################
+# Function Name: validateMatrix
+# Description: checks to see if the dimensions of two matrices are the same 
+# Arguments: none 
+################################################################################
+#validateMatrix ()
+#{
+#  cols1=$(head -1 $1 | wc -w) 
+#  cols2=$(head -1 $2 | wc -w) 
+#  rows1=$(cat $1 | wc -l)
+#  rows2=$(cat $2 | wc -l)
+#  if [ $cols1 != $cols2 || $rows1 != $rows2 ]
+#  then
+#    echo "Matrix dimensions are not equal" 
+#    exit 1
+#  fi 
+#}
+
+"$@"
